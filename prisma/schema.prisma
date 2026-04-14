@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum HouseholdRole {
+  OWNER
+  MEMBER
+}
+
+enum IngredientCategory {
+  PRODUCE
+  DAIRY
+  MEAT
+  SEAFOOD
+  PANTRY
+  FROZEN
+  BAKERY
+  BEVERAGES
+  OTHER
+}
+
+enum MealSlot {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String
+  householdId  String?
+  household    Household?    @relation(fields: [householdId], references: [id], onDelete: SetNull)
+  role         HouseholdRole @default(MEMBER)
+  createdRecipes    Recipe[]    @relation("RecipeCreatedBy")
+  createdMealPlans  MealPlan[]  @relation("MealPlanCreatedBy")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([householdId])
+}
+
+model Household {
+  id         String     @id @default(cuid())
+  name       String
+  inviteCode String     @unique
+  members    User[]
+  recipes    Recipe[]
+  mealPlans  MealPlan[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+model Recipe {
+  id               String             @id @default(cuid())
+  title            String
+  sourceUrl        String?
+  ingredients      RecipeIngredient[]
+  instructions     String             @db.Text
+  notes            String?            @db.Text
+  servings         Int                @default(4)
+  prepTimeMinutes  Int?
+  cookTimeMinutes  Int?
+  tags             String[]
+  householdId      String
+  household        Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdById      String
+  createdBy        User               @relation("RecipeCreatedBy", fields: [createdById], references: [id])
+  mealPlans        MealPlan[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([householdId])
+}
+
+model RecipeIngredient {
+  id                 String             @id @default(cuid())
+  recipeId           String
+  recipe             Recipe             @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  name               String
+  quantity           Float
+  unit               String
+  category           IngredientCategory @default(OTHER)
+  estimatedCalories  Float?
+  estimatedProteinG  Float?
+  estimatedCarbsG    Float?
+  estimatedFatG      Float?
+
+  @@index([recipeId])
+}
+
+model MealPlan {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  date        DateTime  @db.Date
+  slot        MealSlot
+  recipeId    String
+  recipe      Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  servings    Int       @default(4)
+  createdById String
+  createdBy   User      @relation("MealPlanCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([householdId, date, slot])
+  @@index([householdId, date])
+}
