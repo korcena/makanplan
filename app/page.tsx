@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthUser } from "@/lib/session";
 
 export default async function RootPage() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const user = await getAuthUser();
+  if (!user) {
     redirect("/login");
   }
   redirect("/dashboard");

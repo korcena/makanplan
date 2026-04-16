@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireApiUser } from "@/lib/api-auth";
 import { generateInviteCode } from "@/lib/utils";
 
 const createSchema = z.object({
@@ -15,12 +14,9 @@ const updateSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-  if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (user.householdId) return NextResponse.json({ error: "Already in a household" }, { status: 400 });
+  const auth = await requireApiUser();
+  if ("response" in auth) return auth.response;
+  if (auth.user.householdId) return NextResponse.json({ error: "Already in a household" }, { status: 400 });
 
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
@@ -37,11 +33,11 @@ export async function POST(req: Request) {
     data: {
       name: parsed.data.name,
       inviteCode,
-      members: { connect: { id: user.id } },
+      members: { connect: { id: auth.user.id } },
     },
   });
   await prisma.user.update({
-    where: { id: user.id },
+    where: { id: auth.user.id },
     data: { householdId: household.id, role: "OWNER" },
   });
 
@@ -49,12 +45,10 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-  if (!user?.householdId) return NextResponse.json({ error: "No household" }, { status: 400 });
-  if (user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await requireApiUser();
+  if ("response" in auth) return auth.response;
+  if (!auth.user.householdId) return NextResponse.json({ error: "No household" }, { status: 400 });
+  if (auth.user.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
@@ -64,6 +58,6 @@ export async function PATCH(req: Request) {
   if (parsed.data.name) data.name = parsed.data.name;
   if (parsed.data.regenerateInviteCode) data.inviteCode = generateInviteCode();
 
-  const household = await prisma.household.update({ where: { id: user.householdId }, data });
+  const household = await prisma.household.update({ where: { id: auth.user.householdId }, data });
   return NextResponse.json({ household });
 }

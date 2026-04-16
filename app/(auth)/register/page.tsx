@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,30 +16,35 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
     }
     setLoading(true);
-    const res = await fetch("/api/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, password }),
+    const supabase = createSupabaseBrowserClient();
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: { name: name.trim() },
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/household`,
+      },
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || "Failed to register");
-      setLoading(false);
+    setLoading(false);
+    if (error) {
+      setError(error.message || "Failed to register");
       return;
     }
-    const signInRes = await signIn("credentials", { email, password, redirect: false });
-    setLoading(false);
-    if (signInRes?.error) {
-      setError("Registered, but sign-in failed. Please try logging in.");
+    // If Supabase has email confirmation enabled, `session` is null until the
+    // user confirms via email. Otherwise we're signed in immediately.
+    if (!data.session) {
+      setInfo("Check your email to confirm your account, then sign in.");
       return;
     }
     router.push("/household");
@@ -75,6 +80,7 @@ export default function RegisterPage() {
             <p className="text-xs text-muted-foreground">Minimum 8 characters.</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {info && <p className="text-sm text-primary">{info}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating…" : "Create account"}
           </Button>

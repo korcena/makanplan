@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireApiHousehold } from "@/lib/api-auth";
 
 const categoryEnum = z.enum([
   "PRODUCE",
@@ -49,19 +48,17 @@ async function requireOwnedRecipe(id: string, householdId: string) {
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const recipe = await requireOwnedRecipe(params.id, session.user.householdId);
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
+  const recipe = await requireOwnedRecipe(params.id, auth.householdId);
   if (!recipe) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ recipe });
 }
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const existing = await requireOwnedRecipe(params.id, session.user.householdId);
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
+  const existing = await requireOwnedRecipe(params.id, auth.householdId);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json().catch(() => null);
@@ -104,10 +101,9 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const existing = await requireOwnedRecipe(params.id, session.user.householdId);
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
+  const existing = await requireOwnedRecipe(params.id, auth.householdId);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.recipe.delete({ where: { id: existing.id } });

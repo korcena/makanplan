@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum HouseholdRole {
@@ -31,11 +32,13 @@ enum MealSlot {
   SNACK
 }
 
+// Mirror of Supabase Auth users. `id` must equal the Supabase auth user id
+// (a UUID); the row is created/updated lazily the first time an authenticated
+// user hits the app.
 model User {
-  id           String        @id @default(cuid())
+  id           String        @id
   email        String        @unique
   name         String
-  passwordHash String
   householdId  String?
   household    Household?    @relation(fields: [householdId], references: [id], onDelete: SetNull)
   role         HouseholdRole @default(MEMBER)

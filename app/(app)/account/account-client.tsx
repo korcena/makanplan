@@ -16,7 +16,6 @@ export function AccountClient({
   const router = useRouter();
   const { toast } = useToast();
   const [name, setName] = useState(user.name);
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
   const saveName = async (e: React.FormEvent) => {
@@ -36,13 +35,12 @@ export function AccountClient({
     const res = await fetch("/api/account", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({ newPassword }),
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       return toast(d.error || "Failed", "error");
     }
-    setCurrentPassword("");
     setNewPassword("");
     toast("Password changed", "success");
   };
@@ -80,19 +78,10 @@ export function AccountClient({
       <Card>
         <CardHeader>
           <CardTitle>Change password</CardTitle>
+          <CardDescription>Set a new password for your account.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={changePassword} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current">Current password</Label>
-              <Input
-                id="current"
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="new">New password</Label>
               <Input

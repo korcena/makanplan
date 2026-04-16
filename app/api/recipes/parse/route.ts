@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireApiHousehold } from "@/lib/api-auth";
 import { parseRecipeWithClaude } from "@/lib/recipe-parser";
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
 
   const body = await req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text : "";

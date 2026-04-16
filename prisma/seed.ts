@@ -1,5 +1,5 @@
 import { PrismaClient, IngredientCategory, MealSlot } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { createClient } from "@supabase/supabase-js";
 import { addDays, startOfWeek } from "date-fns";
 
 const prisma = new PrismaClient();
@@ -212,25 +212,61 @@ const recipes: SeedRecipe[] = [
   },
 ];
 
-async function main() {
-  const email = "test@makanplan.com";
-  const passwordHash = await bcrypt.hash("password123", 10);
+async function ensureDemoAuthUser(email: string, password: string, name: string): Promise<string> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error(
+      "Seeding requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your env.",
+    );
+  }
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 
-  // Clean slate for seed data (keep foreign users alone)
-  const existing = await prisma.user.findUnique({ where: { email } });
+  // Look up any existing user with this email so the seed is idempotent.
+  const { data: list, error: listErr } = await admin.auth.admin.listUsers();
+  if (listErr) throw listErr;
+  const existing = list.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
   if (existing) {
-    if (existing.householdId) {
-      await prisma.household.delete({ where: { id: existing.householdId } }).catch(() => null);
-    }
-    await prisma.user.delete({ where: { email } }).catch(() => null);
+    // Reset password + metadata so the demo credentials always work.
+    const { error: updErr } = await admin.auth.admin.updateUserById(existing.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { name },
+    });
+    if (updErr) throw updErr;
+    return existing.id;
   }
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name: "Demo User",
-      passwordHash,
-    },
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { name },
+  });
+  if (createErr || !created.user) throw createErr ?? new Error("Failed to create auth user");
+  return created.user.id;
+}
+
+async function main() {
+  const email = "test@makanplan.com";
+  const password = "password123";
+  const name = "Demo User";
+
+  const authUserId = await ensureDemoAuthUser(email, password, name);
+
+  // Clean slate for seed data: drop any existing household for the demo user
+  // (cascades recipes + meal plans) before re-seeding.
+  const existing = await prisma.user.findUnique({ where: { id: authUserId } });
+  if (existing?.householdId) {
+    await prisma.household.delete({ where: { id: existing.householdId } }).catch(() => null);
+  }
+
+  const user = await prisma.user.upsert({
+    where: { id: authUserId },
+    update: { email, name, householdId: null, role: "MEMBER" },
+    create: { id: authUserId, email, name },
   });
 
   const household = await prisma.household.create({
@@ -317,7 +353,7 @@ async function main() {
     });
   }
 
-  console.log(`Seeded: ${user.email} / password123`);
+  console.log(`Seeded: ${user.email} / ${password}`);
   console.log(`Household: ${household.name} (invite: ${household.inviteCode})`);
   console.log(`Recipes: ${createdRecipes.length}`);
   console.log(`Meal plans: ${schedule.length}`);
