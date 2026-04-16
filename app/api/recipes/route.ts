@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireApiHousehold } from "@/lib/api-auth";
 
 const categoryEnum = z.enum([
   "PRODUCE",
@@ -40,15 +39,14 @@ const recipeSchema = z.object({
 });
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
+
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
   const tag = url.searchParams.get("tag")?.trim() ?? "";
 
-  const where: Record<string, unknown> = { householdId: session.user.householdId };
+  const where: Record<string, unknown> = { householdId: auth.householdId };
   const and: Record<string, unknown>[] = [];
   if (q) {
     and.push({
@@ -71,10 +69,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
 
   const body = await req.json().catch(() => null);
   const parsed = recipeSchema.safeParse(body);
@@ -86,8 +82,8 @@ export async function POST(req: Request) {
   const recipe = await prisma.$transaction(async (tx) => {
     return tx.recipe.create({
       data: {
-        householdId: session.user.householdId!,
-        createdById: session.user.id,
+        householdId: auth.householdId,
+        createdById: auth.user.id,
         title: d.title,
         sourceUrl: d.sourceUrl ?? null,
         instructions: d.instructions,

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   BookOpen,
@@ -15,6 +14,7 @@ import {
   ChefHat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -28,6 +28,14 @@ const navItems = [
 
 export function Sidebar({ userName }: { userName?: string | null }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const signOut = async () => {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <aside className="hidden md:flex md:flex-col w-64 border-r bg-card h-screen sticky top-0">
@@ -66,7 +74,7 @@ export function Sidebar({ userName }: { userName?: string | null }) {
           <div className="text-xs text-muted-foreground px-3 py-2">Signed in as {userName}</div>
         )}
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={signOut}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />

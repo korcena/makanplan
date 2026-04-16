@@ -118,7 +118,7 @@ export async function scrapeAndParseUrl(url: string): Promise<ScrapeResult> {
   if (jsonld && jsonld.recipeIngredient && jsonld.recipeIngredient.length > 0) {
     const ingredientsRaw = jsonld.recipeIngredient.map((s) => rawIngredientToParsed(String(s)));
     const parsed: ParsedRecipe = {
-      title: jsonld.name ?? $("title").text().trim().slice(0, 200) || "Imported recipe",
+      title: (jsonld.name ?? $("title").text().trim().slice(0, 200)) || "Imported recipe",
       ingredients: ingredientsRaw,
       instructions: extractInstructionsText(jsonld.recipeInstructions),
       notes: jsonld.description ?? null,

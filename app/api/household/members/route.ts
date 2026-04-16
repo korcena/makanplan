@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireApiUser } from "@/lib/api-auth";
 
 const actionSchema = z.object({
   userId: z.string().min(1),
@@ -10,11 +9,10 @@ const actionSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const me = await prisma.user.findUnique({ where: { id: session.user.id } });
-  if (!me?.householdId) return NextResponse.json({ error: "No household" }, { status: 400 });
+  const auth = await requireApiUser();
+  if ("response" in auth) return auth.response;
+  const me = auth.user;
+  if (!me.householdId) return NextResponse.json({ error: "No household" }, { status: 400 });
   if (me.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => null);

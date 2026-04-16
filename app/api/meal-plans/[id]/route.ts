@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireApiHousehold } from "@/lib/api-auth";
 import { parseDateYMD } from "@/lib/utils";
 
 const slotEnum = z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]);
@@ -21,11 +20,10 @@ async function loadOwned(id: string, householdId: string) {
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
 
-  const existing = await loadOwned(params.id, session.user.householdId);
+  const existing = await loadOwned(params.id, auth.householdId);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json().catch(() => null);
@@ -42,7 +40,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   ) {
     await prisma.mealPlan.deleteMany({
       where: {
-        householdId: session.user.householdId,
+        householdId: auth.householdId,
         date: newDate,
         slot: newSlot,
         NOT: { id: existing.id },
@@ -52,7 +50,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   if (parsed.data.recipeId) {
     const recipe = await prisma.recipe.findUnique({ where: { id: parsed.data.recipeId } });
-    if (!recipe || recipe.householdId !== session.user.householdId) {
+    if (!recipe || recipe.householdId !== auth.householdId) {
       return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
     }
   }
@@ -72,10 +70,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session.user.householdId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const existing = await loadOwned(params.id, session.user.householdId);
+  const auth = await requireApiHousehold();
+  if ("response" in auth) return auth.response;
+  const existing = await loadOwned(params.id, auth.householdId);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   await prisma.mealPlan.delete({ where: { id: existing.id } });
   return NextResponse.json({ ok: true });
