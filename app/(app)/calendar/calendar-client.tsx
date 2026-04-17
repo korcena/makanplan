@@ -14,7 +14,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Plus, X, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Users, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatDateYMD, toDateKey } from "@/lib/utils";
@@ -43,12 +43,26 @@ export function CalendarClient({
 }: {
   recipes: { id: string; title: string; servings: number; tags: string[] }[];
 }) {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [weekStart, setWeekStart] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("makanplan-calendar-week");
+      if (saved) {
+        const d = new Date(saved + "T00:00:00");
+        if (!isNaN(d.getTime())) return startOfWeek(d, { weekStartsOn: 1 });
+      }
+    }
+    return startOfWeek(new Date(), { weekStartsOn: 1 });
+  });
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [picker, setPicker] = useState<{ date: string; slot: MealSlot; plan?: Plan } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<{ recipeId: string; recipeTitle: string; servings: number } | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    localStorage.setItem("makanplan-calendar-week", formatDateYMD(weekStart));
+  }, [weekStart]);
 
   const weekEnd = useMemo(() => endOfWeek(weekStart, { weekStartsOn: 1 }), [weekStart]);
   const days = useMemo(() => {
@@ -158,6 +172,24 @@ export function CalendarClient({
     loadPlans();
   };
 
+  const onCopyPlan = (plan: Plan) => {
+    setClipboard({ recipeId: plan.recipe.id, recipeTitle: plan.recipe.title, servings: plan.servings });
+    toast("Click an empty slot to paste", "success");
+  };
+
+  const onPaste = async (date: string, slot: MealSlot) => {
+    if (!clipboard) return;
+    const res = await fetch("/api/meal-plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, slot, recipeId: clipboard.recipeId, servings: clipboard.servings }),
+    });
+    if (!res.ok) return toast("Failed to paste", "error");
+    toast("Meal copied", "success");
+    setClipboard(null);
+    loadPlans();
+  };
+
   const activePlan = plans.find((p) => p.id === activeDragId);
 
   return (
@@ -176,6 +208,16 @@ export function CalendarClient({
           {format(weekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
         </div>
       </div>
+
+      {clipboard && (
+        <div className="flex items-center gap-2 mb-4 p-3 rounded-md bg-accent text-accent-foreground text-sm">
+          <Copy className="h-4 w-4" />
+          <span>Click an empty slot to paste <strong>{clipboard.recipeTitle}</strong></span>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setClipboard(null)}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         {/* Mobile: stacked by day */}
@@ -197,8 +239,11 @@ export function CalendarClient({
                           ymd={ymd}
                           slot={slot}
                           plan={plan}
+                          clipboard={clipboard}
                           onOpen={() => setPicker({ date: ymd, slot, plan })}
                           onRemove={() => plan && onRemovePlan(plan)}
+                          onCopy={() => plan && onCopyPlan(plan)}
+                          onPaste={() => onPaste(ymd, slot)}
                         />
                       );
                     })}
@@ -239,8 +284,11 @@ export function CalendarClient({
                       ymd={ymd}
                       slot={slot}
                       plan={plan}
+                      clipboard={clipboard}
                       onOpen={() => setPicker({ date: ymd, slot, plan })}
                       onRemove={() => plan && onRemovePlan(plan)}
+                      onCopy={() => plan && onCopyPlan(plan)}
+                      onPaste={() => onPaste(ymd, slot)}
                     />
                   </div>
                 );
@@ -279,14 +327,20 @@ function Cell({
   ymd,
   slot,
   plan,
+  clipboard,
   onOpen,
   onRemove,
+  onCopy,
+  onPaste,
 }: {
   ymd: string;
   slot: MealSlot;
   plan: Plan | undefined;
+  clipboard: { recipeId: string; recipeTitle: string; servings: number } | null;
   onOpen: () => void;
   onRemove: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `${ymd}|${slot}` });
   return (
@@ -298,7 +352,14 @@ function Cell({
       )}
     >
       {plan ? (
-        <DraggablePlan plan={plan} onOpen={onOpen} onRemove={onRemove} />
+        <DraggablePlan plan={plan} onOpen={onOpen} onRemove={onRemove} onCopy={onCopy} />
+      ) : clipboard ? (
+        <button
+          onClick={onPaste}
+          className="w-full h-full min-h-[60px] rounded-md border-2 border-dashed border-primary/50 text-primary text-xs flex items-center justify-center hover:border-primary hover:bg-accent"
+        >
+          <Copy className="h-4 w-4 mr-1" /> Paste
+        </button>
       ) : (
         <button
           onClick={onOpen}
@@ -315,10 +376,12 @@ function DraggablePlan({
   plan,
   onOpen,
   onRemove,
+  onCopy,
 }: {
   plan: Plan;
   onOpen: () => void;
   onRemove: () => void;
+  onCopy: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: plan.id,
@@ -341,6 +404,14 @@ function DraggablePlan({
         </div>
       </div>
       <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1">
+        <button
+          onClick={onCopy}
+          className="p-1 rounded bg-background/80 hover:bg-background"
+          aria-label="Copy to another slot"
+          title="Copy to another slot"
+        >
+          <Copy className="h-3 w-3" />
+        </button>
         <button
           onClick={onOpen}
           className="p-1 rounded bg-background/80 hover:bg-background"

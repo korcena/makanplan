@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -93,6 +93,7 @@ export function RecipeForm({
   const [values, setValues] = useState<RecipeFormValues>(initial);
   const [tagInput, setTagInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [estimating, setEstimating] = useState(false);
 
   const update = <K extends keyof RecipeFormValues>(k: K, v: RecipeFormValues[K]) =>
     setValues((s) => ({ ...s, [k]: v }));
@@ -132,6 +133,60 @@ export function RecipeForm({
   };
 
   const removeTag = (t: string) => update("tags", values.tags.filter((x) => x !== t));
+
+  const estimateMacros = async () => {
+    const named = values.ingredients.filter((i) => i.name.trim());
+    if (named.length === 0) return toast("Add at least one ingredient first", "error");
+    setEstimating(true);
+    try {
+      const res = await fetch("/api/recipes/estimate-macros", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ingredients: named.map((i) => ({
+            name: i.name.trim(),
+            quantity: i.quantity,
+            unit: i.unit.trim(),
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast(d.error || "Failed to estimate macros", "error");
+        return;
+      }
+      const data = await res.json();
+      const macros = data.macros as Array<{
+        calories: number;
+        proteinG: number;
+        carbsG: number;
+        fatG: number;
+      }>;
+      setValues((s) => {
+        let macroIdx = 0;
+        return {
+          ...s,
+          ingredients: s.ingredients.map((ing) => {
+            if (!ing.name.trim()) return ing;
+            const m = macros[macroIdx++];
+            if (!m) return ing;
+            return {
+              ...ing,
+              estimatedCalories: Math.round(m.calories * 10) / 10,
+              estimatedProteinG: Math.round(m.proteinG * 10) / 10,
+              estimatedCarbsG: Math.round(m.carbsG * 10) / 10,
+              estimatedFatG: Math.round(m.fatG * 10) / 10,
+            };
+          }),
+        };
+      });
+      toast("Macros estimated! Review the values.", "success");
+    } catch {
+      toast("Failed to estimate macros", "error");
+    } finally {
+      setEstimating(false);
+    }
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,9 +410,15 @@ export function RecipeForm({
               </div>
             </div>
           ))}
-          <Button type="button" variant="outline" onClick={addIngredient}>
-            <Plus className="h-4 w-4 mr-1" /> Add ingredient
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={addIngredient}>
+              <Plus className="h-4 w-4 mr-1" /> Add ingredient
+            </Button>
+            <Button type="button" variant="outline" onClick={estimateMacros} disabled={estimating}>
+              <Sparkles className="h-4 w-4 mr-1" />
+              {estimating ? "Estimating…" : "Estimate macros"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
