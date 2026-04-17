@@ -236,8 +236,13 @@ function rawIngredientToParsed(line: string): ParsedIngredient {
     }
   }
 
+  const name = rest
+    .replace(/\(+[^)]*note\s*\d*[^)]*\)+/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
   return {
-    name: rest || original,
+    name: name || original,
     quantity,
     unit,
     category: "OTHER",

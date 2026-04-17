@@ -68,7 +68,7 @@ function coerceParsed(raw: unknown): ParsedRecipe {
     const i = x as Record<string, unknown>;
     const q = Number(i.quantity);
     return {
-      name: String(i.name ?? "").trim() || "ingredient",
+      name: stripNoteAnnotations(String(i.name ?? "").trim()) || "ingredient",
       quantity: Number.isFinite(q) && q > 0 ? q : 1,
       unit: String(i.unit ?? "").trim(),
       category: normalizeCategory(String(i.category ?? "OTHER")),
@@ -104,6 +104,10 @@ function coerceParsed(raw: unknown): ParsedRecipe {
     tags,
     macrosPerIngredient,
   };
+}
+
+function stripNoteAnnotations(s: string): string {
+  return s.replace(/\(+[^)]*note\s*\d*[^)]*\)+/gi, "").replace(/\s{2,}/g, " ").trim();
 }
 
 function normalizeCategory(s: string): ParsedIngredient["category"] {
