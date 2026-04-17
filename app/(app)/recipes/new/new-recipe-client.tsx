@@ -39,6 +39,52 @@ function parsedToFormValues(p: ParsedRecipe, sourceUrl = ""): RecipeFormValues {
   };
 }
 
+async function autoEstimateMacros(form: RecipeFormValues): Promise<RecipeFormValues> {
+  const named = form.ingredients.filter((i) => i.name.trim());
+  if (named.length === 0) return form;
+  const hasMacros = named.some((i) => i.estimatedCalories != null);
+  if (hasMacros) return form;
+  try {
+    const res = await fetch("/api/recipes/estimate-macros", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ingredients: named.map((i) => ({
+          name: i.name.trim(),
+          quantity: i.quantity,
+          unit: i.unit.trim(),
+        })),
+      }),
+    });
+    if (!res.ok) return form;
+    const data = await res.json();
+    const macros = data.macros as Array<{
+      calories: number;
+      proteinG: number;
+      carbsG: number;
+      fatG: number;
+    }>;
+    let macroIdx = 0;
+    return {
+      ...form,
+      ingredients: form.ingredients.map((ing) => {
+        if (!ing.name.trim()) return ing;
+        const m = macros[macroIdx++];
+        if (!m) return ing;
+        return {
+          ...ing,
+          estimatedCalories: Math.round(m.calories * 10) / 10,
+          estimatedProteinG: Math.round(m.proteinG * 10) / 10,
+          estimatedCarbsG: Math.round(m.carbsG * 10) / 10,
+          estimatedFatG: Math.round(m.fatG * 10) / 10,
+        };
+      }),
+    };
+  } catch {
+    return form;
+  }
+}
+
 export function NewRecipeClient() {
   const { toast } = useToast();
   const [text, setText] = useState("");
@@ -60,7 +106,9 @@ export function NewRecipeClient() {
       return toast(d.error || "Failed to parse", "error");
     }
     const data = await res.json();
-    setInitial(parsedToFormValues(data.parsed as ParsedRecipe));
+    const form = parsedToFormValues(data.parsed as ParsedRecipe);
+    const withMacros = await autoEstimateMacros(form);
+    setInitial(withMacros);
     toast("Parsed! Review and save.", "success");
   };
 
@@ -78,7 +126,9 @@ export function NewRecipeClient() {
       return toast(d.error || "Failed to import", "error");
     }
     const data = await res.json();
-    setInitial(parsedToFormValues(data.parsed as ParsedRecipe, data.sourceUrl));
+    const form = parsedToFormValues(data.parsed as ParsedRecipe, data.sourceUrl);
+    const withMacros = await autoEstimateMacros(form);
+    setInitial(withMacros);
     toast(
       data.source === "jsonld"
         ? "Imported from structured data. Review and save."
