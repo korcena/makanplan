@@ -49,20 +49,8 @@ export async function POST(req: Request) {
 
   const date = parseDateYMD(parsed.data.date);
 
-  const plan = await prisma.mealPlan.upsert({
-    where: {
-      householdId_date_slot: {
-        householdId: auth.householdId,
-        date,
-        slot: parsed.data.slot,
-      },
-    },
-    update: {
-      recipeId: parsed.data.recipeId,
-      servings: parsed.data.servings,
-      createdById: auth.user.id,
-    },
-    create: {
+  const plan = await prisma.mealPlan.create({
+    data: {
       householdId: auth.householdId,
       createdById: auth.user.id,
       date,
