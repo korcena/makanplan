@@ -14,7 +14,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Plus, X, Users, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Users, Copy, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatDateYMD, toDateKey } from "@/lib/utils";
@@ -93,8 +93,12 @@ export function CalendarClient({
   }, [loadPlans]);
 
   const byCell = useMemo(() => {
-    const map: Record<string, Plan | undefined> = {};
-    for (const p of plans) map[`${p.date}::${p.slot}`] = p;
+    const map: Record<string, Plan[]> = {};
+    for (const p of plans) {
+      const key = `${p.date}::${p.slot}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(p);
+    }
     return map;
   }, [plans]);
 
@@ -113,12 +117,9 @@ export function CalendarClient({
     if (!plan) return;
     if (plan.date === targetDate && plan.slot === targetSlot) return;
 
-    // optimistic
     const snapshot = plans;
     setPlans((cur) =>
-      cur
-        .filter((p) => !(p.date === targetDate && p.slot === targetSlot && p.id !== plan.id))
-        .map((p) => (p.id === plan.id ? { ...p, date: targetDate, slot: targetSlot } : p))
+      cur.map((p) => (p.id === plan.id ? { ...p, date: targetDate, slot: targetSlot } : p))
     );
 
     const res = await fetch(`/api/meal-plans/${planId}`, {
@@ -153,10 +154,7 @@ export function CalendarClient({
       const res = await fetch(`/api/meal-plans/${opts.existingPlanId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipeId: opts.recipeId,
-          servings: opts.servings,
-        }),
+        body: JSON.stringify({ recipeId: opts.recipeId, servings: opts.servings }),
       });
       if (!res.ok) return toast("Failed to save", "error");
     } else {
@@ -174,7 +172,7 @@ export function CalendarClient({
 
   const onCopyPlan = (plan: Plan) => {
     setClipboard({ recipeId: plan.recipe.id, recipeTitle: plan.recipe.title, servings: plan.servings });
-    toast("Click an empty slot to paste", "success");
+    toast("Click any slot to paste", "success");
   };
 
   const onPaste = async (date: string, slot: MealSlot) => {
@@ -211,8 +209,8 @@ export function CalendarClient({
 
       {clipboard && (
         <div className="flex items-center gap-2 mb-4 p-3 rounded-md bg-accent text-accent-foreground text-sm">
-          <Copy className="h-4 w-4" />
-          <span>Click an empty slot to paste <strong>{clipboard.recipeTitle}</strong></span>
+          <Copy className="h-4 w-4 shrink-0" />
+          <span>Click any slot to paste <strong>{clipboard.recipeTitle}</strong></span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setClipboard(null)}>
             Cancel
           </Button>
@@ -231,22 +229,19 @@ export function CalendarClient({
                     {format(day, "EEE, MMM d")}
                   </div>
                   <div className="space-y-2">
-                    {SLOTS.map((slot) => {
-                      const plan = byCell[`${ymd}::${slot}`];
-                      return (
-                        <Cell
-                          key={slot}
-                          ymd={ymd}
-                          slot={slot}
-                          plan={plan}
-                          clipboard={clipboard}
-                          onOpen={() => setPicker({ date: ymd, slot, plan })}
-                          onRemove={() => plan && onRemovePlan(plan)}
-                          onCopy={() => plan && onCopyPlan(plan)}
-                          onPaste={() => onPaste(ymd, slot)}
-                        />
-                      );
-                    })}
+                    {SLOTS.map((slot) => (
+                      <Cell
+                        key={slot}
+                        ymd={ymd}
+                        slot={slot}
+                        plans={byCell[`${ymd}::${slot}`] ?? []}
+                        clipboard={clipboard}
+                        onOpen={(plan) => setPicker({ date: ymd, slot, plan })}
+                        onRemove={onRemovePlan}
+                        onCopy={onCopyPlan}
+                        onPaste={() => onPaste(ymd, slot)}
+                      />
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -277,17 +272,16 @@ export function CalendarClient({
               </div>
               {days.map((day) => {
                 const ymd = formatDateYMD(day);
-                const plan = byCell[`${ymd}::${slot}`];
                 return (
                   <div key={ymd + slot} className="border-b border-l min-h-[90px] p-2 bg-background">
                     <Cell
                       ymd={ymd}
                       slot={slot}
-                      plan={plan}
+                      plans={byCell[`${ymd}::${slot}`] ?? []}
                       clipboard={clipboard}
-                      onOpen={() => setPicker({ date: ymd, slot, plan })}
-                      onRemove={() => plan && onRemovePlan(plan)}
-                      onCopy={() => plan && onCopyPlan(plan)}
+                      onOpen={(plan) => setPicker({ date: ymd, slot, plan })}
+                      onRemove={onRemovePlan}
+                      onCopy={onCopyPlan}
                       onPaste={() => onPaste(ymd, slot)}
                     />
                   </div>
@@ -326,7 +320,7 @@ export function CalendarClient({
 function Cell({
   ymd,
   slot,
-  plan,
+  plans,
   clipboard,
   onOpen,
   onRemove,
@@ -335,35 +329,39 @@ function Cell({
 }: {
   ymd: string;
   slot: MealSlot;
-  plan: Plan | undefined;
+  plans: Plan[];
   clipboard: { recipeId: string; recipeTitle: string; servings: number } | null;
-  onOpen: () => void;
-  onRemove: () => void;
-  onCopy: () => void;
+  onOpen: (plan?: Plan) => void;
+  onRemove: (plan: Plan) => void;
+  onCopy: (plan: Plan) => void;
   onPaste: () => void;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `${ymd}|${slot}` });
   return (
     <div
       ref={setDropRef}
-      className={cn(
-        "h-full rounded-md transition-colors",
-        isOver && "bg-accent"
-      )}
+      className={cn("h-full rounded-md transition-colors space-y-1", isOver && "bg-accent/50")}
     >
-      {plan ? (
-        <DraggablePlan plan={plan} onOpen={onOpen} onRemove={onRemove} onCopy={onCopy} />
-      ) : clipboard ? (
+      {plans.map((plan) => (
+        <DraggablePlan
+          key={plan.id}
+          plan={plan}
+          onOpen={() => onOpen(plan)}
+          onRemove={() => onRemove(plan)}
+          onCopy={() => onCopy(plan)}
+        />
+      ))}
+      {clipboard ? (
         <button
           onClick={onPaste}
-          className="w-full h-full min-h-[60px] rounded-md border-2 border-dashed border-primary/50 text-primary text-xs flex items-center justify-center hover:border-primary hover:bg-accent"
+          className="w-full min-h-[36px] rounded-md border-2 border-dashed border-primary/50 text-primary text-xs flex items-center justify-center gap-1 hover:border-primary hover:bg-accent"
         >
-          <Copy className="h-4 w-4 mr-1" /> Paste
+          <Copy className="h-3 w-3" /> Paste here
         </button>
       ) : (
         <button
-          onClick={onOpen}
-          className="w-full h-full min-h-[60px] rounded-md border border-dashed border-muted-foreground/30 text-muted-foreground text-xs flex items-center justify-center hover:border-primary hover:text-primary"
+          onClick={() => onOpen()}
+          className="w-full min-h-[36px] rounded-md border border-dashed border-muted-foreground/30 text-muted-foreground text-xs flex items-center justify-center hover:border-primary hover:text-primary"
         >
           <Plus className="h-4 w-4" />
         </button>
@@ -395,7 +393,7 @@ function DraggablePlan({
       }}
       className="group relative rounded-md bg-secondary text-secondary-foreground p-2 text-sm shadow-warm hover:bg-accent border cursor-grab active:cursor-grabbing"
     >
-      <div {...listeners} {...attributes} onDoubleClick={onOpen} className="min-h-[40px]">
+      <div {...listeners} {...attributes} onDoubleClick={onOpen} className="min-h-[36px] pr-16">
         <Link href={`/recipes/${plan.recipe.id}`} className="font-medium block leading-tight hover:underline">
           {plan.recipe.title}
         </Link>
@@ -403,7 +401,7 @@ function DraggablePlan({
           <Users className="h-3 w-3" /> {plan.servings}
         </div>
       </div>
-      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-1">
+      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5">
         <button
           onClick={onCopy}
           className="p-1 rounded bg-background/80 hover:bg-background"
@@ -418,12 +416,13 @@ function DraggablePlan({
           aria-label="Edit"
           title="Edit"
         >
-          <Plus className="h-3 w-3 rotate-45" />
+          <Pencil className="h-3 w-3" />
         </button>
         <button
           onClick={onRemove}
           className="p-1 rounded bg-background/80 hover:bg-destructive hover:text-destructive-foreground"
           aria-label="Remove"
+          title="Remove"
         >
           <X className="h-3 w-3" />
         </button>

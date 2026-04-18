@@ -33,21 +33,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const newDate = parsed.data.date ? parseDateYMD(parsed.data.date) : existing.date;
   const newSlot = parsed.data.slot ?? existing.slot;
 
-  // If moving to a new (date, slot), handle any existing plan there by deleting it first.
-  if (
-    newDate.getTime() !== existing.date.getTime() ||
-    newSlot !== existing.slot
-  ) {
-    await prisma.mealPlan.deleteMany({
-      where: {
-        householdId: auth.householdId,
-        date: newDate,
-        slot: newSlot,
-        NOT: { id: existing.id },
-      },
-    });
-  }
-
   if (parsed.data.recipeId) {
     const recipe = await prisma.recipe.findUnique({ where: { id: parsed.data.recipeId } });
     if (!recipe || recipe.householdId !== auth.householdId) {

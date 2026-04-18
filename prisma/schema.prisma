@@ -113,6 +113,5 @@ model MealPlan {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@unique([householdId, date, slot])
   @@index([householdId, date])
 }
