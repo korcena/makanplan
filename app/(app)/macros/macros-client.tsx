@@ -161,9 +161,9 @@ export function MacrosClient() {
                   onClick={() => setDate(d.date)}
                   className={`flex-1 flex flex-col items-center gap-2 group`}
                 >
-                  <div className="flex-1 w-full flex flex-col-reverse relative">
+                  <div className="flex-1 w-full relative">
                     <div
-                      className="w-full rounded-md overflow-hidden relative border bg-muted/40"
+                      className="absolute bottom-0 left-0 right-0 rounded-md overflow-hidden border bg-muted/40"
                       style={{ height: `${Math.max(4, totalH)}%` }}
                     >
                       <div className="absolute inset-0 flex flex-col-reverse">
