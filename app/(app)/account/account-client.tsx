@@ -57,6 +57,32 @@ export function AccountClient({
     router.refresh();
   };
 
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteAccount = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to delete your account? This cannot be undone."
+      )
+    )
+      return;
+    if (
+      !confirm(
+        "This will permanently delete your account and all associated data. Continue?"
+      )
+    )
+      return;
+
+    setDeleting(true);
+    const res = await fetch("/api/account", { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      return toast(d.error || "Failed to delete account", "error");
+    }
+    window.location.href = "/login";
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -110,6 +136,22 @@ export function AccountClient({
           </CardContent>
         </Card>
       )}
+
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive">Delete account</CardTitle>
+          <CardDescription>
+            Permanently delete your account and all your data. If you are the
+            last member of your household, the household and all its recipes and
+            meal plans will also be deleted.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="destructive" onClick={deleteAccount} disabled={deleting}>
+            {deleting ? "Deleting..." : "Delete my account"}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }
