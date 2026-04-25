@@ -32,9 +32,6 @@ enum MealSlot {
   SNACK
 }
 
-// Mirror of Supabase Auth users. `id` must equal the Supabase auth user id
-// (a UUID); the row is created/updated lazily the first time an authenticated
-// user hits the app.
 model User {
   id           String        @id
   email        String        @unique
@@ -42,8 +39,9 @@ model User {
   householdId  String?
   household    Household?    @relation(fields: [householdId], references: [id], onDelete: SetNull)
   role         HouseholdRole @default(MEMBER)
-  createdRecipes    Recipe[]    @relation("RecipeCreatedBy")
-  createdMealPlans  MealPlan[]  @relation("MealPlanCreatedBy")
+  createdRecipes       Recipe[]       @relation("RecipeCreatedBy")
+  createdMealPlans     MealPlan[]     @relation("MealPlanCreatedBy")
+  createdCalendarNotes CalendarNote[] @relation("CalendarNoteCreatedBy")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -51,14 +49,15 @@ model User {
 }
 
 model Household {
-  id         String     @id @default(cuid())
-  name       String
-  inviteCode String     @unique
-  members    User[]
-  recipes    Recipe[]
-  mealPlans  MealPlan[]
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id            String         @id @default(cuid())
+  name          String
+  inviteCode    String         @unique
+  members       User[]
+  recipes       Recipe[]
+  mealPlans     MealPlan[]
+  calendarNotes CalendarNote[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model Recipe {
@@ -108,8 +107,24 @@ model MealPlan {
   recipeId    String
   recipe      Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   servings    Int       @default(4)
+  isLeftover  Boolean   @default(false)
   createdById String
   createdBy   User      @relation("MealPlanCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([householdId, date])
+}
+
+model CalendarNote {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  date        DateTime  @db.Date
+  slot        MealSlot
+  text        String
+  createdById String
+  createdBy   User      @relation("CalendarNoteCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

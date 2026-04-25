@@ -14,7 +14,18 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Plus, X, Users, Copy, Pencil } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  X,
+  Users,
+  Copy,
+  Pencil,
+  StickyNote,
+  UtensilsCrossed,
+  Repeat,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatDateYMD, toDateKey } from "@/lib/utils";
@@ -32,52 +43,91 @@ const SLOT_LABEL: Record<MealSlot, string> = {
 
 type Plan = {
   id: string;
-  date: string; // YMD
+  date: string;
   slot: MealSlot;
   servings: number;
+  isLeftover: boolean;
   recipe: { id: string; title: string };
 };
+
+type Note = {
+  id: string;
+  date: string;
+  slot: MealSlot;
+  text: string;
+};
+
+type WeekStartDay = 0 | 1;
 
 export function CalendarClient({
   recipes,
 }: {
   recipes: { id: string; title: string; servings: number; tags: string[] }[];
 }) {
+  const [weekStartDay, setWeekStartDay] = useState<WeekStartDay>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("makanplan-week-start-day");
+      if (saved === "0") return 0;
+    }
+    return 1;
+  });
+
   const [weekStart, setWeekStart] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("makanplan-calendar-week");
       if (saved) {
         const d = new Date(saved + "T00:00:00");
-        if (!isNaN(d.getTime())) return startOfWeek(d, { weekStartsOn: 1 });
+        if (!isNaN(d.getTime())) return startOfWeek(d, { weekStartsOn: weekStartDay });
       }
     }
-    return startOfWeek(new Date(), { weekStartsOn: 1 });
+    return startOfWeek(new Date(), { weekStartsOn: weekStartDay });
   });
+
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [picker, setPicker] = useState<{ date: string; slot: MealSlot; plan?: Plan } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const [clipboard, setClipboard] = useState<{ recipeId: string; recipeTitle: string; servings: number } | null>(null);
+  const [clipboard, setClipboard] = useState<{
+    recipeId: string;
+    recipeTitle: string;
+    servings: number;
+    asLeftover: boolean;
+  } | null>(null);
+  const [noteInput, setNoteInput] = useState<{ date: string; slot: MealSlot; existingNote?: Note } | null>(null);
+  const [noteText, setNoteText] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
     localStorage.setItem("makanplan-calendar-week", formatDateYMD(weekStart));
   }, [weekStart]);
 
-  const weekEnd = useMemo(() => endOfWeek(weekStart, { weekStartsOn: 1 }), [weekStart]);
+  useEffect(() => {
+    localStorage.setItem("makanplan-week-start-day", String(weekStartDay));
+  }, [weekStartDay]);
+
+  const changeWeekStartDay = (day: WeekStartDay) => {
+    setWeekStartDay(day);
+    setWeekStart(startOfWeek(weekStart, { weekStartsOn: day }));
+  };
+
+  const weekEnd = useMemo(() => endOfWeek(weekStart, { weekStartsOn: weekStartDay }), [weekStart, weekStartDay]);
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
-  const loadPlans = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({
       start: formatDateYMD(weekStart),
       end: formatDateYMD(weekEnd),
     });
-    const res = await fetch(`/api/meal-plans?${params.toString()}`);
-    if (res.ok) {
-      const data = await res.json();
+    const [plansRes, notesRes] = await Promise.all([
+      fetch(`/api/meal-plans?${params.toString()}`),
+      fetch(`/api/calendar-notes?${params.toString()}`),
+    ]);
+    if (plansRes.ok) {
+      const data = await plansRes.json();
       setPlans(
         (data.plans as Array<Plan & { date: string }>).map((p) => ({
           ...p,
@@ -85,14 +135,23 @@ export function CalendarClient({
         }))
       );
     }
+    if (notesRes.ok) {
+      const data = await notesRes.json();
+      setNotes(
+        (data.notes as Array<Note & { date: string }>).map((n) => ({
+          ...n,
+          date: toDateKey(n.date),
+        }))
+      );
+    }
     setLoading(false);
   }, [weekStart, weekEnd]);
 
   useEffect(() => {
-    loadPlans();
-  }, [loadPlans]);
+    loadData();
+  }, [loadData]);
 
-  const byCell = useMemo(() => {
+  const plansByCell = useMemo(() => {
     const map: Record<string, Plan[]> = {};
     for (const p of plans) {
       const key = `${p.date}::${p.slot}`;
@@ -102,11 +161,19 @@ export function CalendarClient({
     return map;
   }, [plans]);
 
+  const notesByCell = useMemo(() => {
+    const map: Record<string, Note[]> = {};
+    for (const n of notes) {
+      const key = `${n.date}::${n.slot}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(n);
+    }
+    return map;
+  }, [notes]);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const onDragStart = (e: DragStartEvent) => {
-    setActiveDragId(String(e.active.id));
-  };
+  const onDragStart = (e: DragStartEvent) => setActiveDragId(String(e.active.id));
 
   const onDragEnd = async (e: DragEndEvent) => {
     setActiveDragId(null);
@@ -167,12 +234,27 @@ export function CalendarClient({
     }
     toast("Saved", "success");
     setPicker(null);
-    loadPlans();
+    loadData();
   };
 
-  const onCopyPlan = (plan: Plan) => {
-    setClipboard({ recipeId: plan.recipe.id, recipeTitle: plan.recipe.title, servings: plan.servings });
-    toast("Click any slot to paste", "success");
+  const onCopyAsMeal = (plan: Plan) => {
+    setClipboard({
+      recipeId: plan.recipe.id,
+      recipeTitle: plan.recipe.title,
+      servings: plan.servings,
+      asLeftover: false,
+    });
+    toast("Click any slot to paste as meal", "success");
+  };
+
+  const onCopyAsLeftover = (plan: Plan) => {
+    setClipboard({
+      recipeId: plan.recipe.id,
+      recipeTitle: plan.recipe.title,
+      servings: plan.servings,
+      asLeftover: true,
+    });
+    toast("Click any slot to paste as leftover", "success");
   };
 
   const onPaste = async (date: string, slot: MealSlot) => {
@@ -180,12 +262,60 @@ export function CalendarClient({
     const res = await fetch("/api/meal-plans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, slot, recipeId: clipboard.recipeId, servings: clipboard.servings }),
+      body: JSON.stringify({
+        date,
+        slot,
+        recipeId: clipboard.recipeId,
+        servings: clipboard.servings,
+        isLeftover: clipboard.asLeftover,
+      }),
     });
     if (!res.ok) return toast("Failed to paste", "error");
-    toast("Meal copied", "success");
+    toast(clipboard.asLeftover ? "Leftover added" : "Meal copied", "success");
     setClipboard(null);
-    loadPlans();
+    loadData();
+  };
+
+  const onAddNote = (date: string, slot: MealSlot) => {
+    setNoteInput({ date, slot });
+    setNoteText("");
+  };
+
+  const onEditNote = (note: Note) => {
+    setNoteInput({ date: note.date, slot: note.slot, existingNote: note });
+    setNoteText(note.text);
+  };
+
+  const onSaveNote = async () => {
+    if (!noteInput || !noteText.trim()) return;
+    if (noteInput.existingNote) {
+      const res = await fetch(`/api/calendar-notes/${noteInput.existingNote.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: noteText.trim() }),
+      });
+      if (!res.ok) return toast("Failed to save note", "error");
+    } else {
+      const res = await fetch("/api/calendar-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: noteInput.date, slot: noteInput.slot, text: noteText.trim() }),
+      });
+      if (!res.ok) return toast("Failed to add note", "error");
+    }
+    setNoteInput(null);
+    setNoteText("");
+    loadData();
+  };
+
+  const onRemoveNote = async (note: Note) => {
+    const snapshot = notes;
+    setNotes((cur) => cur.filter((n) => n.id !== note.id));
+    const res = await fetch(`/api/calendar-notes/${note.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setNotes(snapshot);
+      toast("Failed to remove note", "error");
+    }
   };
 
   const activePlan = plans.find((p) => p.id === activeDragId);
@@ -193,25 +323,100 @@ export function CalendarClient({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Button variant="outline" size="icon" onClick={() => setWeekStart((d) => addDays(d, -7))}>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setWeekStart((d) => addDays(d, -7))}
+        >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <Button variant="outline" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
+        <Button
+          variant="outline"
+          onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: weekStartDay }))}
+        >
           Today
         </Button>
-        <Button variant="outline" size="icon" onClick={() => setWeekStart((d) => addDays(d, 7))}>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setWeekStart((d) => addDays(d, 7))}
+        >
           <ChevronRight className="h-4 w-4" />
         </Button>
         <div className="font-medium text-muted-foreground ml-2">
           {format(weekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
         </div>
+        <div className="ml-auto flex items-center gap-1 text-xs">
+          <span className="text-muted-foreground mr-1">Start:</span>
+          <Button
+            variant={weekStartDay === 1 ? "default" : "outline"}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => changeWeekStartDay(1)}
+          >
+            Mon
+          </Button>
+          <Button
+            variant={weekStartDay === 0 ? "default" : "outline"}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => changeWeekStartDay(0)}
+          >
+            Sun
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-xs mb-4">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded bg-secondary border" />
+          Meal
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded bg-amber-100 border border-amber-300" />
+          Leftover
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" />
+          Note
+        </div>
       </div>
 
       {clipboard && (
         <div className="flex items-center gap-2 mb-4 p-3 rounded-md bg-accent text-accent-foreground text-sm">
-          <Copy className="h-4 w-4 shrink-0" />
-          <span>Click any slot to paste <strong>{clipboard.recipeTitle}</strong></span>
+          {clipboard.asLeftover ? (
+            <Repeat className="h-4 w-4 shrink-0" />
+          ) : (
+            <Copy className="h-4 w-4 shrink-0" />
+          )}
+          <span>
+            Click any slot to paste <strong>{clipboard.recipeTitle}</strong>
+            {clipboard.asLeftover && " as leftover"}
+          </span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setClipboard(null)}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {noteInput && (
+        <div className="flex items-center gap-2 mb-4 p-3 rounded-md bg-blue-50 border border-blue-200 text-sm">
+          <StickyNote className="h-4 w-4 shrink-0 text-blue-600" />
+          <input
+            className="flex-1 bg-transparent border-b border-blue-300 outline-none text-sm px-1 py-0.5"
+            placeholder="Type a note..."
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSaveNote();
+              if (e.key === "Escape") setNoteInput(null);
+            }}
+            autoFocus
+          />
+          <Button size="sm" className="h-7" onClick={onSaveNote} disabled={!noteText.trim()}>
+            Save
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7" onClick={() => setNoteInput(null)}>
             Cancel
           </Button>
         </div>
@@ -234,12 +439,17 @@ export function CalendarClient({
                         key={slot}
                         ymd={ymd}
                         slot={slot}
-                        plans={byCell[`${ymd}::${slot}`] ?? []}
+                        plans={plansByCell[`${ymd}::${slot}`] ?? []}
+                        notes={notesByCell[`${ymd}::${slot}`] ?? []}
                         clipboard={clipboard}
                         onOpen={(plan) => setPicker({ date: ymd, slot, plan })}
                         onRemove={onRemovePlan}
-                        onCopy={onCopyPlan}
+                        onCopyAsMeal={onCopyAsMeal}
+                        onCopyAsLeftover={onCopyAsLeftover}
                         onPaste={() => onPaste(ymd, slot)}
+                        onAddNote={() => onAddNote(ymd, slot)}
+                        onEditNote={onEditNote}
+                        onRemoveNote={onRemoveNote}
                       />
                     ))}
                   </div>
@@ -251,7 +461,7 @@ export function CalendarClient({
 
         {/* Desktop: 7-column grid */}
         <div className="hidden md:grid grid-cols-[120px_repeat(7,minmax(0,1fr))] border rounded-xl overflow-hidden bg-card">
-          <div className="bg-muted/50 border-b"></div>
+          <div className="bg-muted/50 border-b" />
           {days.map((day) => (
             <div
               key={day.toISOString()}
@@ -277,12 +487,17 @@ export function CalendarClient({
                     <Cell
                       ymd={ymd}
                       slot={slot}
-                      plans={byCell[`${ymd}::${slot}`] ?? []}
+                      plans={plansByCell[`${ymd}::${slot}`] ?? []}
+                      notes={notesByCell[`${ymd}::${slot}`] ?? []}
                       clipboard={clipboard}
                       onOpen={(plan) => setPicker({ date: ymd, slot, plan })}
                       onRemove={onRemovePlan}
-                      onCopy={onCopyPlan}
+                      onCopyAsMeal={onCopyAsMeal}
+                      onCopyAsLeftover={onCopyAsLeftover}
                       onPaste={() => onPaste(ymd, slot)}
+                      onAddNote={() => onAddNote(ymd, slot)}
+                      onEditNote={onEditNote}
+                      onRemoveNote={onRemoveNote}
                     />
                   </div>
                 );
@@ -321,20 +536,30 @@ function Cell({
   ymd,
   slot,
   plans,
+  notes,
   clipboard,
   onOpen,
   onRemove,
-  onCopy,
+  onCopyAsMeal,
+  onCopyAsLeftover,
   onPaste,
+  onAddNote,
+  onEditNote,
+  onRemoveNote,
 }: {
   ymd: string;
   slot: MealSlot;
   plans: Plan[];
-  clipboard: { recipeId: string; recipeTitle: string; servings: number } | null;
+  notes: Note[];
+  clipboard: { recipeId: string; recipeTitle: string; servings: number; asLeftover: boolean } | null;
   onOpen: (plan?: Plan) => void;
   onRemove: (plan: Plan) => void;
-  onCopy: (plan: Plan) => void;
+  onCopyAsMeal: (plan: Plan) => void;
+  onCopyAsLeftover: (plan: Plan) => void;
   onPaste: () => void;
+  onAddNote: () => void;
+  onEditNote: (note: Note) => void;
+  onRemoveNote: (note: Note) => void;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `${ymd}|${slot}` });
   return (
@@ -348,24 +573,40 @@ function Cell({
           plan={plan}
           onOpen={() => onOpen(plan)}
           onRemove={() => onRemove(plan)}
-          onCopy={() => onCopy(plan)}
+          onCopyAsMeal={() => onCopyAsMeal(plan)}
+          onCopyAsLeftover={() => onCopyAsLeftover(plan)}
         />
       ))}
-      {clipboard ? (
-        <button
-          onClick={onPaste}
-          className="w-full min-h-[36px] rounded-md border-2 border-dashed border-primary/50 text-primary text-xs flex items-center justify-center gap-1 hover:border-primary hover:bg-accent"
-        >
-          <Copy className="h-3 w-3" /> Paste here
-        </button>
-      ) : (
-        <button
-          onClick={() => onOpen()}
-          className="w-full min-h-[36px] rounded-md border border-dashed border-muted-foreground/30 text-muted-foreground text-xs flex items-center justify-center hover:border-primary hover:text-primary"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      )}
+      {notes.map((note) => (
+        <NoteCard key={note.id} note={note} onEdit={() => onEditNote(note)} onRemove={() => onRemoveNote(note)} />
+      ))}
+      <div className="flex gap-1">
+        {clipboard ? (
+          <button
+            onClick={onPaste}
+            className="flex-1 min-h-[28px] rounded-md border-2 border-dashed border-primary/50 text-primary text-xs flex items-center justify-center gap-1 hover:border-primary hover:bg-accent"
+          >
+            <Copy className="h-3 w-3" /> Paste
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => onOpen()}
+              className="flex-1 min-h-[28px] rounded-md border border-dashed border-muted-foreground/30 text-muted-foreground text-xs flex items-center justify-center gap-1 hover:border-primary hover:text-primary"
+              title="Add meal"
+            >
+              <UtensilsCrossed className="h-3 w-3" />
+            </button>
+            <button
+              onClick={onAddNote}
+              className="min-h-[28px] px-2 rounded-md border border-dashed border-muted-foreground/30 text-muted-foreground text-xs flex items-center justify-center hover:border-blue-400 hover:text-blue-500"
+              title="Add note"
+            >
+              <StickyNote className="h-3 w-3" />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -374,12 +615,14 @@ function DraggablePlan({
   plan,
   onOpen,
   onRemove,
-  onCopy,
+  onCopyAsMeal,
+  onCopyAsLeftover,
 }: {
   plan: Plan;
   onOpen: () => void;
   onRemove: () => void;
-  onCopy: () => void;
+  onCopyAsMeal: () => void;
+  onCopyAsLeftover: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: plan.id,
@@ -391,24 +634,46 @@ function DraggablePlan({
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         opacity: isDragging ? 0.4 : 1,
       }}
-      className="group relative rounded-md bg-secondary text-secondary-foreground p-2 text-sm shadow-warm hover:bg-accent border cursor-grab active:cursor-grabbing"
+      className={cn(
+        "group relative rounded-md p-2 text-sm shadow-warm border cursor-grab active:cursor-grabbing",
+        plan.isLeftover
+          ? "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100"
+          : "bg-secondary text-secondary-foreground hover:bg-accent"
+      )}
     >
-      <div {...listeners} {...attributes} onDoubleClick={onOpen} className="min-h-[36px] pr-16">
-        <Link href={`/recipes/${plan.recipe.id}`} className="font-medium block leading-tight hover:underline">
-          {plan.recipe.title}
-        </Link>
-        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+      <div {...listeners} {...attributes} onDoubleClick={onOpen} className="min-h-[32px] pr-14">
+        <div className="flex items-center gap-1">
+          {plan.isLeftover && <Repeat className="h-3 w-3 text-amber-500 shrink-0" />}
+          <Link
+            href={`/recipes/${plan.recipe.id}`}
+            className="font-medium block leading-tight hover:underline truncate"
+          >
+            {plan.recipe.title}
+          </Link>
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
           <Users className="h-3 w-3" /> {plan.servings}
+          {plan.isLeftover && (
+            <span className="text-amber-600 font-medium ml-1">leftover</span>
+          )}
         </div>
       </div>
       <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5">
         <button
-          onClick={onCopy}
+          onClick={onCopyAsMeal}
           className="p-1 rounded bg-background/80 hover:bg-background"
-          aria-label="Copy to another slot"
-          title="Copy to another slot"
+          aria-label="Copy as meal"
+          title="Copy as meal"
         >
           <Copy className="h-3 w-3" />
+        </button>
+        <button
+          onClick={onCopyAsLeftover}
+          className="p-1 rounded bg-background/80 hover:bg-amber-100"
+          aria-label="Add as leftover"
+          title="Add as leftover"
+        >
+          <Repeat className="h-3 w-3" />
         </button>
         <button
           onClick={onOpen}
@@ -423,6 +688,43 @@ function DraggablePlan({
           className="p-1 rounded bg-background/80 hover:bg-destructive hover:text-destructive-foreground"
           aria-label="Remove"
           title="Remove"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NoteCard({
+  note,
+  onEdit,
+  onRemove,
+}: {
+  note: Note;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="group relative rounded-md bg-blue-50 text-blue-900 border border-blue-200 p-2 text-xs">
+      <div className="flex items-start gap-1 pr-10">
+        <StickyNote className="h-3 w-3 text-blue-400 shrink-0 mt-0.5" />
+        <span className="leading-tight">{note.text}</span>
+      </div>
+      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5">
+        <button
+          onClick={onEdit}
+          className="p-1 rounded bg-white/80 hover:bg-white"
+          aria-label="Edit note"
+          title="Edit note"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+        <button
+          onClick={onRemove}
+          className="p-1 rounded bg-white/80 hover:bg-destructive hover:text-destructive-foreground"
+          aria-label="Remove note"
+          title="Remove note"
         >
           <X className="h-3 w-3" />
         </button>
