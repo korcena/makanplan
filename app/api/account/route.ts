@@ -60,6 +60,10 @@ export async function DELETE() {
           where: { createdById: userId },
           data: { createdById: other.id },
         });
+        await prisma.calendarNote.updateMany({
+          where: { createdById: userId },
+          data: { createdById: other.id },
+        });
       }
     }
   }

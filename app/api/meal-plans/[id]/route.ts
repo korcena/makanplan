@@ -11,6 +11,7 @@ const updateSchema = z.object({
   slot: slotEnum.optional(),
   servings: z.number().int().positive().max(99).optional(),
   recipeId: z.string().optional(),
+  isLeftover: z.boolean().optional(),
 });
 
 async function loadOwned(id: string, householdId: string) {
@@ -47,6 +48,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       slot: newSlot,
       servings: parsed.data.servings ?? existing.servings,
       recipeId: parsed.data.recipeId ?? existing.recipeId,
+      isLeftover: parsed.data.isLeftover ?? existing.isLeftover,
     },
     include: { recipe: { select: { id: true, title: true } } },
   });

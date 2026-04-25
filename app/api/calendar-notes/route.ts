@@ -9,9 +9,7 @@ const slotEnum = z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]);
 const createSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   slot: slotEnum,
-  recipeId: z.string().min(1),
-  servings: z.number().int().positive().max(99),
-  isLeftover: z.boolean().optional(),
+  text: z.string().min(1).max(500),
 });
 
 export async function GET(req: Request) {
@@ -23,16 +21,15 @@ export async function GET(req: Request) {
   const end = url.searchParams.get("end");
   if (!start || !end) return NextResponse.json({ error: "start and end required" }, { status: 400 });
 
-  const plans = await prisma.mealPlan.findMany({
+  const notes = await prisma.calendarNote.findMany({
     where: {
       householdId: auth.householdId,
       date: { gte: parseDateYMD(start), lte: parseDateYMD(end) },
     },
-    include: { recipe: { select: { id: true, title: true } } },
-    orderBy: [{ date: "asc" }, { slot: "asc" }],
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
   });
 
-  return NextResponse.json({ plans });
+  return NextResponse.json({ notes });
 }
 
 export async function POST(req: Request) {
@@ -43,25 +40,15 @@ export async function POST(req: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
-  const recipe = await prisma.recipe.findUnique({ where: { id: parsed.data.recipeId } });
-  if (!recipe || recipe.householdId !== auth.householdId) {
-    return NextResponse.json({ error: "Recipe not found" }, { status: 404 });
-  }
-
-  const date = parseDateYMD(parsed.data.date);
-
-  const plan = await prisma.mealPlan.create({
+  const note = await prisma.calendarNote.create({
     data: {
       householdId: auth.householdId,
       createdById: auth.user.id,
-      date,
+      date: parseDateYMD(parsed.data.date),
       slot: parsed.data.slot,
-      recipeId: parsed.data.recipeId,
-      servings: parsed.data.servings,
-      isLeftover: parsed.data.isLeftover ?? false,
+      text: parsed.data.text,
     },
-    include: { recipe: { select: { id: true, title: true } } },
   });
 
-  return NextResponse.json({ plan });
+  return NextResponse.json({ note });
 }

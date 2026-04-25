@@ -17,6 +17,7 @@ export async function GET(req: Request) {
     where: {
       householdId: auth.householdId,
       date: { gte: parseDateYMD(start), lte: parseDateYMD(end) },
+      isLeftover: false,
     },
     include: { recipe: { include: { ingredients: true } } },
   });
