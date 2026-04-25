@@ -23,17 +23,25 @@ recipe parsing.
 
 ### Meal Calendar
 
-- **Week view** with breakfast, lunch, dinner, and snack slots (Monday–Sunday)
+- **Week view** with breakfast, lunch, dinner, and snack slots
+- **Configurable week start** — choose Monday or Sunday, persisted in
+  localStorage
 - **Multiple recipes per slot** — add mains, sides, appetisers, and desserts to
   the same meal
 - **Drag & drop** — move meals between slots and days
-- **Copy & paste meals** — duplicate a meal to another slot for leftovers
+- **Copy & paste meals** — duplicate a meal to another slot
+- **Leftovers** — copy a meal as a leftover (amber colour, excluded from
+  shopping list so you don't buy ingredients you already have)
+- **Calendar notes** — add, edit, and delete text notes per cell (blue cards)
+- **Colour-coded items** — meals (gray), leftovers (amber), notes (blue) with a
+  legend at the top
 - **Persistent week** — last-viewed week is remembered across navigations
 - **Recipe picker modal** — searchable recipe list with custom serving count
 
 ### Shopping List
 
-- **Auto-generated** from planned meals over a configurable date range
+- **Auto-generated** from planned meals over a configurable date range (leftovers
+  are excluded automatically)
 - **Grouped by category** — produce, dairy, meat, seafood, pantry, frozen,
   bakery, beverages, other
 - **Unit consolidation** — aggregates quantities across recipes
@@ -62,6 +70,8 @@ recipe parsing.
 
 - **Supabase Auth** — email and password registration/login
 - **Account settings** — update display name or change password
+- **Delete account** — permanently delete your account with double confirmation;
+  if you're the last household member, the household and all its data are deleted
 - **Protected routes** — middleware-based session refresh and route guarding
 
 ## Tech Stack
@@ -125,7 +135,7 @@ See `.env.example` for the full list.
 | `DIRECT_URL`                     | Yes      | Supabase Postgres direct connection string  |
 | `NEXT_PUBLIC_SUPABASE_URL`       | Yes      | Supabase project URL                        |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY`  | Yes      | Supabase anon (public) key                  |
-| `SUPABASE_SERVICE_ROLE_KEY`      | Seed     | Service role key (only for `db:seed`)       |
+| `SUPABASE_SERVICE_ROLE_KEY`      | Seed/Del | Service role key (seed + account deletion)  |
 | `ANTHROPIC_API_KEY`              | Yes      | Claude API key for recipe parsing and macros|
 
 ## Project Structure
@@ -134,7 +144,7 @@ See `.env.example` for the full list.
 app/
   (app)/          # Authenticated pages (dashboard, calendar, recipes, macros, shopping-list, account, household)
   (auth)/         # Public pages (login, register, callback)
-  api/            # API routes (recipes, meal-plans, shopping-list, macros, household)
+  api/            # API routes (recipes, meal-plans, calendar-notes, shopping-list, macros, household, account)
   icon.tsx        # App favicon
 components/
   ui/             # Reusable UI primitives (button, card, dialog, input, etc.)
