@@ -29,14 +29,20 @@ export function MacrosClient() {
   const [dayData, setDayData] = useState<Day | null>(null);
   const [week, setWeek] = useState<Day[]>([]);
   const [loading, setLoading] = useState(false);
+  const [weekStartsOn, setWeekStartsOn] = useState<0 | 1>(1);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("makanplan-week-start-day");
+    setWeekStartsOn(stored === "0" ? 0 : 1);
+  }, []);
 
   const weekStart = useMemo(
-    () => formatDateYMD(startOfWeek(new Date(date + "T00:00:00"), { weekStartsOn: 1 })),
-    [date]
+    () => formatDateYMD(startOfWeek(new Date(date + "T00:00:00"), { weekStartsOn })),
+    [date, weekStartsOn]
   );
   const weekEnd = useMemo(
-    () => formatDateYMD(endOfWeek(new Date(date + "T00:00:00"), { weekStartsOn: 1 })),
-    [date]
+    () => formatDateYMD(endOfWeek(new Date(date + "T00:00:00"), { weekStartsOn })),
+    [date, weekStartsOn]
   );
 
   const load = useCallback(async () => {
