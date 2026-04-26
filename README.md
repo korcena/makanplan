@@ -24,8 +24,9 @@ recipe parsing.
 ### Meal Calendar
 
 - **Week view** with breakfast, lunch, dinner, and snack slots
-- **Configurable week start** — choose Monday or Sunday, persisted in
-  localStorage
+- **Configurable week start** — choose Monday or Sunday; the setting is global
+  and respected by the calendar, shopping list, and macros pages (persisted in
+  localStorage)
 - **Multiple recipes per slot** — add mains, sides, appetisers, and desserts to
   the same meal
 - **Drag & drop** — move meals between slots and days
@@ -48,13 +49,15 @@ recipe parsing.
 - **Interactive checklist** — check off items as you shop (persisted in
   localStorage)
 - **Quick actions** — check/uncheck all, copy to clipboard, print-friendly view
-- **Preset ranges** — "This week" and "Next week" buttons
+- **Preset ranges** — "This week" and "Next week" buttons (respects global week
+  start day)
 
 ### Macros & Nutrition
 
 - **Daily dashboard** — total calories, protein, carbs, and fat for any day
 - **Per-slot breakdown** — colour-coded calorie bars for each meal slot
 - **Weekly chart** — 7-day stacked bar chart showing daily calorie distribution
+  (respects global week start day)
 - **Click any day** to drill into its breakdown
 
 ### Households
