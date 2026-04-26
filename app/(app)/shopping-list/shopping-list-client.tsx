@@ -19,13 +19,23 @@ type Group = {
 
 export function ShoppingListClient() {
   const today = new Date();
-  const [start, setStart] = useState(formatDateYMD(startOfWeek(today, { weekStartsOn: 1 })));
-  const [end, setEnd] = useState(formatDateYMD(endOfWeek(today, { weekStartsOn: 1 })));
+  const [weekStartsOn, setWeekStartsOn] = useState<0 | 1>(1);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
   const [mealCount, setMealCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
+
+  useEffect(() => {
+    const stored = localStorage.getItem("makanplan-week-start-day");
+    const day = stored === "0" ? 0 : 1;
+    setWeekStartsOn(day as 0 | 1);
+    setStart(formatDateYMD(startOfWeek(today, { weekStartsOn: day as 0 | 1 })));
+    setEnd(formatDateYMD(endOfWeek(today, { weekStartsOn: day as 0 | 1 })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const storageKey = `makanplan.shopping.${start}.${end}`;
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -48,6 +58,7 @@ export function ShoppingListClient() {
   }, [checked, storageKey]);
 
   const load = useCallback(async () => {
+    if (!start || !end) return;
     setLoading(true);
     const params = new URLSearchParams({ start, end });
     const res = await fetch(`/api/shopping-list?${params.toString()}`);
@@ -66,11 +77,11 @@ export function ShoppingListClient() {
   }, [load]);
 
   const thisWeek = () => {
-    setStart(formatDateYMD(startOfWeek(today, { weekStartsOn: 1 })));
-    setEnd(formatDateYMD(endOfWeek(today, { weekStartsOn: 1 })));
+    setStart(formatDateYMD(startOfWeek(today, { weekStartsOn })));
+    setEnd(formatDateYMD(endOfWeek(today, { weekStartsOn })));
   };
   const nextWeek = () => {
-    const s = addDays(startOfWeek(today, { weekStartsOn: 1 }), 7);
+    const s = addDays(startOfWeek(today, { weekStartsOn }), 7);
     setStart(formatDateYMD(s));
     setEnd(formatDateYMD(addDays(s, 6)));
   };
