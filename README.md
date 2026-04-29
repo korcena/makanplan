@@ -110,7 +110,11 @@ npm run db:push
 npm run db:seed
 # Demo login: test@makanplan.com / password123
 
-# 5. Start dev server
+# 5. Enable Row Level Security (run once via Supabase SQL Editor)
+#    Open supabase/enable-rls.sql and execute it in the SQL Editor.
+#    This locks down PostgREST so only the app's API routes can access data.
+
+# 6. Start dev server
 npm run dev
 ```
 
